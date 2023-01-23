@@ -1,62 +1,44 @@
 #!/usr/bin/env bash
-# Installs, configures, and starts the web server
-SERVER_CONFIG="server {
-	listen 80 default_server;
-	listen [::]:80 default_server;
+# Prepare my webservers (web-01 & web-02)
 
-	server_name _;
-	index index.html index.htm;
-	error_page 404 /404.html;
-	add_header X-Served-By \$hostname;
+# uncomment for easy debugging
+#set -x
 
-	location / {
-		root /var/www/html/;
-		try_files \$uri \$uri/ =404;
-	}
+# colors
+blue='\e[1;34m'
+#brown='\e[0;33m'
+green='\e[1;32m'
+reset='\033[0m'
 
-	location /hbnb_static/ {
-		alias /data/web_static/current/;
-		try_files \$uri \$uri/ =404;
-	}
+echo -e "${blue}Updating and doing some minor checks...${reset}\n"
 
-	if (\$request_filename ~ redirect_me) {
-		rewrite ^ https://sketchfab.com/bluepeno/models permanent;
-	}
-
-	location = /404.html {
-		root /var/www/error/;
-		internal;
-	}
-}"
-HOME_PAGE="<!DOCTYPE html>
-<html lang='en-US'>
-	<head>
-		<title>Home - AirBnB Clone</title>
-	</head>
-	<body>
-		<h1>Welcome to AirBnB!</h1>
-	<body>
-</html>
-"
-# shellcheck disable=SC2230
-if [[ "$(which nginx | grep -c nginx)" == '0' ]]; then
-    apt-get update
-    apt-get -y install nginx
+# install nginx if not present
+if [ ! -x /usr/sbin/nginx ]; then
+	sudo apt-get update -y -qq && \
+	     sudo apt-get install -y nginx
 fi
-mkdir -p /var/www/html /var/www/error
-chmod -R 755 /var/www
-echo 'Hello World!' > /var/www/html/index.html
-echo -e "Ceci n\x27est pas une page" > /var/www/error/404.html
 
-mkdir -p /data/web_static/releases/test /data/web_static/shared
-echo -e "$HOME_PAGE" > /data/web_static/releases/test/index.html
-[ -d /data/web_static/current ] && rm -rf /data/web_static/current
-ln -sf /data/web_static/releases/test/ /data/web_static/current
-chown -hR ubuntu:ubuntu /data
-bash -c "echo -e '$SERVER_CONFIG' > /etc/nginx/sites-available/default"
-ln -sf '/etc/nginx/sites-available/default' '/etc/nginx/sites-enabled/default'
-if [ "$(pgrep -c nginx)" -le 0 ]; then
-	service nginx start
-else
-	service nginx restart
-fi
+echo -e "\n${blue}Setting up some minor stuff.${reset}\n"
+
+# Create directories...
+sudo mkdir -p /data/web_static/releases/test /data/web_static/shared/
+
+# create index.html for test directory
+echo "<h1>Welcome to th3gr00t.tech <\h1>" | sudo dd status=none of=/data/web_static/releases/test/index.html
+
+# create symbolic link
+sudo ln -sf /data/web_static/releases/test /data/web_static/current
+
+# give user ownership to directory
+sudo chown -R ubuntu:ubuntu /data/
+
+# backup default server config file
+sudo cp /etc/nginx/sites-enabled/default nginx-sites-enabled_default.backup
+
+# Set-up the content of /data/web_static/current/ to redirect
+# to domain.tech/hbnb_static
+sudo sed -i '37i\\tlocation /hbnb_static/ {\n\t\talias /data/web_static/current/;\n\t}\n' /etc/nginx/sites-available/default
+
+sudo service nginx restart
+
+echo -e "${green}Completed${reset}"
